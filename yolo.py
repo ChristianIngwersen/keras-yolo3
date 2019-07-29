@@ -77,13 +77,8 @@ class YOLO(object):
                 if is_tiny_version else yolo_body(Input(shape=(None,None,3)), num_anchors//3, num_classes)
             self.yolo_model.load_weights(self.model_path) # make sure model, anchors and classes match
         else:
-            print('output_shape = %d' %(self.yolo_model.layers[-1].output_shape[-1]))
-            print('num_anchors = %d' % num_anchors)
-            print('len = %d' %(len(self.yolo_model.output) * (num_classes + 5)))
-            print('len_output = %d' %(len(self.yolo_model.output)))
             assert self.yolo_model.layers[-1].output_shape[-1] == num_anchors/len(self.yolo_model.output) * (num_classes + 5), 'Mismatch between model and given anchor and class sizes'
 
-        print('{} model, anchors, and classes loaded.'.format(model_path))
 
         # Generate colors for drawing bounding boxes.
         hsv_tuples = [(x / len(self.class_names), 1., 1.)
@@ -105,8 +100,49 @@ class YOLO(object):
                 score_threshold=self.score, iou_threshold=self.iou)
         return boxes, scores, classes
 
+    def find_ball(self, image):
+        image = Image.fromarray(image.astype(np.uint8))
+        start = timer()
+
+        if self.model_image_size != (None, None):
+            assert self.model_image_size[0] % 32 == 0, 'Multiples of 32 required'
+            assert self.model_image_size[1] % 32 == 0, 'Multiples of 32 required'
+            boxed_image = letterbox_image(image, tuple(reversed(self.model_image_size)))
+        else:
+            new_image_size = (image.width - (image.width % 32),
+                              image.height - (image.height % 32))
+            boxed_image = letterbox_image(image, new_image_size)
+        image_data = np.array(boxed_image, dtype='float32')
+        image_data /= 255.
+        image_data = np.expand_dims(image_data, 0)  # Add batch dimension.
+
+        out_boxes, out_scores, out_classes = self.sess.run(
+            [self.boxes, self.scores, self.classes],
+            feed_dict={
+                self.yolo_model.input: image_data,
+                self.input_image_shape: [image.size[1], image.size[0]],
+                K.learning_phase(): 0
+            })
+
+        predicted_class = np.array([self.class_names[c] for c in out_classes]) == "sports ball"
+
+        if predicted_class.sum() == 1:
+            loc = out_boxes[predicted_class]
+        elif predicted_class.sum() > 1:
+            tmp = out_boxes[predicted_class]
+            loc = tmp[np.argmax(out_scores[predicted_class])]
+        else:
+            raise(RuntimeError("Ball not found"))
+
+        top, left, bottom, right = np.squeeze(loc)
+        top = max(0, np.floor(top + 0.5).astype('int32'))
+        left = max(0, np.floor(left + 0.5).astype('int32'))
+        bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
+        right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
+
+        return np.array([top, bottom, left, right])
+
     def detect_image(self, image):
-        print(self.font_path)
         image = Image.fromarray(image.astype(np.uint8))
         start = timer()
 
@@ -120,7 +156,6 @@ class YOLO(object):
             boxed_image = letterbox_image(image, new_image_size)
         image_data = np.array(boxed_image, dtype='float32')
 
-        print(image_data.shape)
         image_data /= 255.
         image_data = np.expand_dims(image_data, 0)  # Add batch dimension.
 
@@ -132,7 +167,6 @@ class YOLO(object):
                 K.learning_phase(): 0
             })
 
-        print('Found {} boxes for {}'.format(len(out_boxes), 'img'))
 
         font = ImageFont.truetype(font=os.path.join(self.font_path, "FiraMono-Medium.otf"),
                                   size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
@@ -152,7 +186,6 @@ class YOLO(object):
             left = max(0, np.floor(left + 0.5).astype('int32'))
             bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
             right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
-            print(label, (left, top), (right, bottom))
 
             if top - label_size[1] >= 0:
                 text_origin = np.array([left, top - label_size[1]])
@@ -171,7 +204,6 @@ class YOLO(object):
             del draw
 
         end = timer()
-        print(end - start)
         return np.asarray(image)
 
     def close_session(self):
