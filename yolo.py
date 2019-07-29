@@ -29,7 +29,8 @@ class YOLO(object):
         "score" : 0.3,
         "iou" : 0.45,
         "model_image_size" : (416, 416),
-        "gpu_num" : 0,
+        "gpu_num": 0,
+        "font_path": "font/"  # This is stupid
     }
 
     @classmethod
@@ -105,6 +106,8 @@ class YOLO(object):
         return boxes, scores, classes
 
     def detect_image(self, image):
+        print(self.font_path)
+        image = Image.fromarray(image.astype(np.uint8))
         start = timer()
 
         if self.model_image_size != (None, None):
@@ -131,8 +134,8 @@ class YOLO(object):
 
         print('Found {} boxes for {}'.format(len(out_boxes), 'img'))
 
-        font = ImageFont.truetype(font='font/FiraMono-Medium.otf',
-                    size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
+        font = ImageFont.truetype(font=os.path.join(self.font_path, "FiraMono-Medium.otf"),
+                                  size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
         thickness = (image.size[0] + image.size[1]) // 300
 
         for i, c in reversed(list(enumerate(out_classes))):
@@ -169,7 +172,7 @@ class YOLO(object):
 
         end = timer()
         print(end - start)
-        return image
+        return np.asarray(image)
 
     def close_session(self):
         self.sess.close()
