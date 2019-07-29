@@ -7,6 +7,7 @@ logs/
 2007*.txt
 model_data/*.h5
 test_data/
+.idea/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
